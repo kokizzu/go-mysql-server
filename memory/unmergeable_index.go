@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -94,18 +95,16 @@ func (u *indexValIter) initValues() error {
 	if u.values == nil {
 		rows, ok := u.tbl.partitions[string(u.partition.Key())]
 		if !ok {
-			return fmt.Errorf(
-				"partition not found: %q", u.partition.Key(),
-			)
+			return sql.ErrPartitionNotFound.New(u.partition.Key())
 		}
 
 		for i, row := range rows {
-			ok, err := sql.EvaluateCondition(sql.NewEmptyContext(), u.matchExpression, row)
+			res, err := sql.EvaluateCondition(sql.NewEmptyContext(), u.matchExpression, row)
 			if err != nil {
 				return err
 			}
 
-			if ok {
+			if sql.IsTrue(res) {
 				encoded, err := EncodeIndexValue(&IndexValue{
 					Pos: i,
 				})
@@ -152,6 +151,8 @@ func getType(val interface{}) (interface{}, sql.Type) {
 		return val, sql.LongText
 	case nil:
 		return nil, sql.Null
+	case time.Time:
+		return val, sql.Datetime
 	default:
 		panic(fmt.Sprintf("Unsupported type for %v of type %T", val, val))
 	}

@@ -33,6 +33,10 @@ type MemoryHarness struct {
 	session                sql.Session
 }
 
+func (m *MemoryHarness) NewSession() *sql.Context {
+	return m.NewContext()
+}
+
 const testNumPartitions = 5
 
 func NewMemoryHarness(name string, parallelism int, numTablePartitions int, useNativeIndexes bool, indexDriverInitalizer IndexDriverInitalizer) *MemoryHarness {
@@ -49,9 +53,7 @@ func NewDefaultMemoryHarness() *MemoryHarness {
 	return NewMemoryHarness("default", 1, testNumPartitions, true, nil)
 }
 
-var skippedQueries = []string{
-	"select * from unionview", // memory views only persist for a single session
-}
+var skippedQueries = []string{}
 
 func (m *MemoryHarness) SkipQueryTest(query string) bool {
 	for _, skippedQuery := range skippedQueries {
@@ -74,6 +76,7 @@ var _ IndexHarness = (*MemoryHarness)(nil)
 var _ VersionedDBHarness = (*MemoryHarness)(nil)
 var _ ForeignKeyHarness = (*MemoryHarness)(nil)
 var _ KeylessTableHarness = (*MemoryHarness)(nil)
+var _ ReadOnlyDatabaseHarness = (*MemoryHarness)(nil)
 var _ SkippingHarness = (*SkippingMemoryHarness)(nil)
 
 type SkippingMemoryHarness struct {
@@ -116,7 +119,11 @@ func (m *MemoryHarness) NewTableAsOf(db sql.VersionedDatabase, name string, sche
 	if m.nativeIndexSupport {
 		table.EnablePrimaryKeyIndexes()
 	}
-	db.(*memory.HistoryDatabase).AddTableAsOf(name, table, asOf)
+	if ro, ok := db.(memory.ReadOnlyDatabase); ok {
+		ro.HistoryDatabase.AddTableAsOf(name, table, asOf)
+	} else {
+		db.(*memory.HistoryDatabase).AddTableAsOf(name, table, asOf)
+	}
 	return table
 }
 
@@ -140,11 +147,32 @@ func (m *MemoryHarness) NewDatabase(name string) sql.Database {
 	return database
 }
 
+func (m *MemoryHarness) NewDatabases(names ...string) []sql.Database {
+	var dbs []sql.Database
+	for _, name := range names {
+		dbs = append(dbs, m.NewDatabase(name))
+	}
+	return dbs
+}
+
 func (m *MemoryHarness) NewTable(db sql.Database, name string, schema sql.Schema) (sql.Table, error) {
 	table := memory.NewPartitionedTable(name, schema, m.numTablePartitions)
 	if m.nativeIndexSupport {
 		table.EnablePrimaryKeyIndexes()
 	}
-	db.(*memory.HistoryDatabase).AddTable(name, table)
+
+	if ro, ok := db.(memory.ReadOnlyDatabase); ok {
+		ro.HistoryDatabase.AddTable(name, table)
+	} else {
+		db.(*memory.HistoryDatabase).AddTable(name, table)
+	}
 	return table, nil
+}
+
+func (m *MemoryHarness) NewReadOnlyDatabases(names ...string) []sql.ReadOnlyDatabase {
+	dbs := make([]sql.ReadOnlyDatabase, len(names))
+	for i, name := range names {
+		dbs[i] = memory.NewReadOnlyDatabase(name)
+	}
+	return dbs
 }

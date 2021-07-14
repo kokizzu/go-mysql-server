@@ -144,10 +144,6 @@ func (a *AddColumn) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) 
 		}
 	}
 
-	if !a.column.Nullable && a.column.Default == nil {
-		return nil, ErrNullDefault.New()
-	}
-
 	if err := a.validateDefaultPosition(tblSch); err != nil {
 		return nil, err
 	}
@@ -530,7 +526,7 @@ func updateDefaultsOnColumnRename(ctx *sql.Context, tbl sql.AlterableTable, oldN
 			continue
 		}
 		newCol := *col
-		newCol.Default.Expression, err = expression.TransformUp(col.Default.Expression, func(e sql.Expression) (sql.Expression, error) {
+		newCol.Default.Expression, err = expression.TransformUp(ctx, col.Default.Expression, func(e sql.Expression) (sql.Expression, error) {
 			if expr, ok := e.(*expression.GetField); ok {
 				if strings.ToLower(expr.Name()) == oldName {
 					colsToModify[&newCol] = struct{}{}

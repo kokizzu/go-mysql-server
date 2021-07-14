@@ -165,12 +165,12 @@ func (c *Case) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 			cond = b.Cond
 		}
 
-		ok, err := sql.EvaluateCondition(ctx, cond, row)
+		res, err := sql.EvaluateCondition(ctx, cond, row)
 		if err != nil {
 			return nil, err
 		}
 
-		if ok {
+		if sql.IsTrue(res) {
 			bval, err := b.Value.Eval(ctx, row)
 			if err != nil {
 				return nil, err
@@ -191,7 +191,7 @@ func (c *Case) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 }
 
 // WithChildren implements the Expression interface.
-func (c *Case) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (c *Case) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	var expected = len(c.Branches) * 2
 	if c.Expr != nil {
 		expected++

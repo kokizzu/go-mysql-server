@@ -1777,6 +1777,14 @@ end;`,
 			},
 		},
 	},
+	{
+		Name: "triggers with subquery expressions analyze",
+		SetUpScript: []string{
+			"create table a (x int primary key)",
+			"create trigger t1 before insert on a for each row begin if NEW.x in (select 2+2 from dual) then signal SQLSTATE '45000' SET MESSAGE_TEXT = 'String field contains invalid value, like empty string, ''none'', ''null'', ''n/a'', ''nan'' etc.'; end if; end;",
+		},
+		Assertions: nil,
+	},
 }
 
 var TriggerErrorTests = []ScriptTest{
@@ -1796,7 +1804,7 @@ var TriggerErrorTests = []ScriptTest{
 			"create trigger trigger_has_error before insert on x for each row insert into y values (null)",
 		},
 		Query:       "insert into x values (1,2)",
-		ExpectedErr: plan.ErrInsertIntoNonNullableProvidedNull,
+		ExpectedErr: sql.ErrInsertIntoNonNullableProvidedNull,
 	},
 	{
 		Name: "self update on insert",

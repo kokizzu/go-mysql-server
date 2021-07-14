@@ -81,9 +81,11 @@ var (
 	ErrDuplicateAliasOrTable = errors.NewKind("Not unique table/alias: %s")
 
 	// ErrPrimaryKeyViolation is returned when a primary key constraint is violated
+	// This is meant to wrap a sql.UniqueKey error, which provides the key string
 	ErrPrimaryKeyViolation = errors.NewKind("duplicate primary key given")
 
 	// ErrUniqueKeyViolation is returned when a unique key constraint is violated
+	// This is meant to wrap a sql.UniqueKey error, which provides the key string
 	ErrUniqueKeyViolation = errors.NewKind("duplicate unique key given")
 
 	// ErrMisusedAlias is returned when a alias is defined and used in the same projection.
@@ -254,6 +256,43 @@ var (
 
 	// ErrAlterTableNotSupported is thrown when the table doesn't support ALTER TABLE statements
 	ErrAlterTableNotSupported = errors.NewKind("table %s cannot be altered")
+
+	// ErrPartitionNotFound is thrown when a partition key on a table is not found
+	ErrPartitionNotFound = errors.NewKind("partition not found %q")
+
+	// ErrInsertIntoNonNullableProvidedNull is called when a null value is inserted into a non-nullable column
+	ErrInsertIntoNonNullableProvidedNull = errors.NewKind("column name '%v' is non-nullable but attempted to set a value of null")
+
+	// ErrForeignKeyChildViolation is called when a rows is added but there is no parent row, and a foreign key constraint fails. Add the parent row first.
+	ErrForeignKeyChildViolation = errors.NewKind("cannot add or update a child row - Foreign key violation on fk: `%s`, table: `%s`, referenced table: `%s`, key: `%s`")
+
+	// ErrForeignKeyParentViolation is called when a parent row that is deleted has children, and a foreign key constraint fails. Delete the children first.
+	ErrForeignKeyParentViolation = errors.NewKind("cannot delete or update a parent row - Foreign key violation on fk: `%s`, table: `%s`, referenced table: `%s`, key: `%s`")
+
+	// ErrForeignKeyColumnCountMismatch is called when the declared column and referenced column counts do not match.
+	ErrForeignKeyColumnCountMismatch = errors.NewKind("the foreign key must reference an equivalent number of columns")
+
+	// ErrDuplicateEntry is returns when a duplicate entry is placed on an index such as a UNIQUE or a Primary Key.
+	ErrDuplicateEntry = errors.NewKind("Duplicate entry for key '%s'")
+
+	// ErrInvalidArgument is returned when an argument to a function is invalid.
+	ErrInvalidArgument = errors.NewKind("Incorrect arguments to %s")
+
+	// ErrSavepointDoesNotExist is returned when a RELEASE SAVEPOINT or ROLLBACK TO SAVEPOINT statement references a
+	// non-existent savepoint identifier
+	ErrSavepointDoesNotExist = errors.NewKind("SAVEPOINT %s does not exist")
+
+	// ErrTableCreatedNotFound is thrown when an integrator attempts to create a temporary tables without temporary table
+	// support.
+	ErrTemporaryTableNotSupported = errors.NewKind("database does not support temporary tables")
+
+	// ErrInvalidSyntax is returned for syntax errors that aren't picked up by the parser, e.g. the wrong type of
+	// expression used in part of statement.
+	ErrInvalidSyntax = errors.NewKind("Invalid syntax: %s")
+
+	// ErrTableCopyingNotSupported is returned when a table invokes the TableCopierDatabase interface's
+	// CopyTableData method without supporting the interface
+	ErrTableCopyingNotSupported = errors.NewKind("error: Table copying not supported")
 )
 
 func CastSQLError(err error) (*mysql.SQLError, bool) {
@@ -276,6 +315,22 @@ func CastSQLError(err error) (*mysql.SQLError, bool) {
 		code = mysql.ERSubqueryNo1Row
 	case ErrSubqueryMultipleColumns.Is(err):
 		code = mysql.EROperandColumns
+	case ErrInsertIntoNonNullableProvidedNull.Is(err):
+		code = mysql.ERBadNullError
+	case ErrPrimaryKeyViolation.Is(err):
+		code = mysql.ERDupEntry
+	case ErrUniqueKeyViolation.Is(err):
+		code = mysql.ERDupEntry
+	case ErrPartitionNotFound.Is(err):
+		code = 1526 // TODO: Needs to be added to vitess
+	case ErrForeignKeyChildViolation.Is(err):
+		code = mysql.ErNoReferencedRow2 // test with mysql returns 1452 vs 1216
+	case ErrForeignKeyParentViolation.Is(err):
+		code = mysql.ERRowIsReferenced2 // test with mysql returns 1451 vs 1215
+	case ErrDuplicateEntry.Is(err):
+		code = mysql.ERDupEntry
+	case ErrInvalidJSONText.Is(err):
+		code = 3141 // TODO: Needs to be added to vitess
 	default:
 		code = mysql.ERUnknownError
 	}
@@ -304,9 +359,5 @@ func NewUniqueKeyErr(keyStr string, isPK bool, existing Row) error {
 }
 
 func (ue UniqueKeyError) Error() string {
-	if ue.IsPK {
-		return fmt.Sprintf("duplicate primary key given: %s", ue.keyStr)
-	} else {
-		return fmt.Sprintf("duplicate unique key given: %s", ue.keyStr)
-	}
+	return fmt.Sprintf("%s", ue.keyStr)
 }

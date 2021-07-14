@@ -128,6 +128,7 @@ func (o *onDuplicateUpdateHandler) handleRowUpdate(row sql.Row) error {
 	}
 
 	// Otherwise (a row was updated), increment by 2 if the row changed, 0 if not
+	// TODO: If CLIENT_FOUND_ROWS is set, the affected-rows value is 1 (not 0) if an existing row is set to its current values.
 	oldRow := row[:len(row)/2]
 	newRow := row[len(row)/2:]
 	if equals, err := oldRow.Equals(newRow, o.schema); err == nil {
@@ -209,9 +210,9 @@ func (a *accumulatorIter) Next() (sql.Row, error) {
 		row, err := a.iter.Next()
 		if err == io.EOF {
 			return sql.NewRow(a.updateRowHandler.okResult()), nil
-		}
-
-		if err != nil {
+		} else if ErrInsertIgnore.Is(err) {
+			continue
+		} else if err != nil {
 			return nil, err
 		}
 
@@ -230,6 +231,13 @@ func (a *accumulatorIter) Close(ctx *sql.Context) error {
 
 	result := a.updateRowHandler.okResult()
 	ctx.SetLastQueryInfo(sql.RowCount, int64(result.RowsAffected))
+
+	// For UPDATE, the affected-rows value is the number of rows “found”; that is, matched by the WHERE clause for FOUND_ROWS
+	// cc. https://dev.mysql.com/doc/c-api/8.0/en/mysql-affected-rows.html
+	if au, ok := a.updateRowHandler.(*updateRowHandler); ok {
+		ctx.SetLastQueryInfo(sql.FoundRows, int64(au.rowsMatched))
+	}
+
 	return nil
 }
 
